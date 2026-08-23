@@ -1,0 +1,50 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+*.tfvars
+!*.tfvars.example
+.terraformrc
+terraform.rc
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+kubeconfig*
+!kubernetes/**/*.yaml
+
+# Data / models / notebooks
+# (datasets/sample_telemetry.csv is a small tracked fixture; large
+# generated datasets go under datasets/generated/, which IS ignored)
+datasets/generated/
+ai-engine/**/*.pt
+ai-engine/**/*.pkl
+ai-engine/**/chroma_db/
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Node (dashboards tooling, if any)
+node_modules/

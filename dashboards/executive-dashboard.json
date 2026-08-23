@@ -1,0 +1,116 @@
+{
+  "uid": "ai-obs-executive",
+  "title": "AI Observability — Executive",
+  "tags": ["ai-observability", "executive"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "namespace",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(kube_pod_info, namespace)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Cluster Health Score",
+      "type": "gauge",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "100 * (1 - (sum(up == 0) or vector(0)) / count(up))",
+          "legendFormat": "Health Score"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 70 },
+              { "color": "green", "value": 90 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Active Alerts",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        { "expr": "sum(ALERTS{alertstate=\"firing\"})", "legendFormat": "Firing" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Error Budget Remaining (30d, 99.9% SLO)",
+      "type": "gauge",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "1 - (sum(increase(http_requests_total{status=~\"5..\",namespace=~\"$namespace\"}[30d])) / sum(increase(http_requests_total{namespace=~\"$namespace\"}[30d])) / 0.001)",
+          "legendFormat": "Budget Remaining"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 } }
+    },
+    {
+      "id": 4,
+      "title": "SLO Compliance (rolling 30d)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        {
+          "expr": "1 - (sum(rate(http_requests_total{status=~\"5..\",namespace=~\"$namespace\"}[5m])) / sum(rate(http_requests_total{namespace=~\"$namespace\"}[5m])))",
+          "legendFormat": "Success Ratio"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit" } }
+    },
+    {
+      "id": 5,
+      "title": "Predicted Failures (next 30m, AI Prediction Service)",
+      "type": "table",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "topk(10, ai_predicted_failure_probability{namespace=~\"$namespace\"})",
+          "legendFormat": "{{pod}}",
+          "format": "table"
+        }
+      ],
+      "description": "Sourced from ai-engine/prediction — exposed as a custom metric by the AI engine's export job."
+    }
+  ]
+}

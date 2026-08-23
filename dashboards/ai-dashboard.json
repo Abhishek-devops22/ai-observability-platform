@@ -1,0 +1,104 @@
+{
+  "uid": "ai-obs-ai",
+  "title": "AI Observability — AI Intelligence",
+  "tags": ["ai-observability", "ai"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": { "from": "now-12h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "namespace",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(kube_pod_info, namespace)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Anomaly Timeline",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "ai_anomaly_score{namespace=~\"$namespace\"}",
+          "legendFormat": "{{pod}}"
+        }
+      ],
+      "description": "Sourced from ai-engine/anomaly_detection.AnomalyDetector.score(), exported as a custom metric.",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.5 },
+              { "color": "red", "value": 0.8 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Failure Probability",
+      "type": "gauge",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "max(ai_predicted_failure_probability{namespace=~\"$namespace\"})",
+          "legendFormat": "Max Failure Probability"
+        }
+      ],
+      "description": "Sourced from ai-engine/prediction.FailurePredictor.predict().",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.5 },
+              { "color": "red", "value": 0.8 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "RCA Confidence (recent investigations)",
+      "type": "table",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "ai_rca_confidence{namespace=~\"$namespace\"}",
+          "legendFormat": "{{pod}} — {{issue}}",
+          "format": "table"
+        }
+      ],
+      "description": "Sourced from ai-engine/rca_agent.RCAAgent.investigate() -> RCAResult.confidence."
+    },
+    {
+      "id": 4,
+      "title": "Similar Historical Incidents (semantic search)",
+      "type": "logs",
+      "datasource": "Loki",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "{namespace=~\"$namespace\"} |= `similar_incident`" }
+      ],
+      "description": "Placeholder view — the real 'similar incidents' surface is ai-engine/vector_store.ChromaLogStore.semantic_search(), which isn't PromQL/LogQL-queryable; wire this panel to a small API panel or the RCA agent's own report once it exists."
+    }
+  ]
+}

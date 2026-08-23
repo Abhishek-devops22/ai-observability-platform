@@ -1,0 +1,51 @@
+# Alertmanager routing config, loaded via the `alertmanager-config` Secret
+# referenced by kubernetes/prometheus/values.yaml (alertmanager.configSecret).
+#
+# kubectl create secret generic alertmanager-config \
+#   -n observability --from-file=alertmanager.yaml=alertmanager.yaml
+
+global:
+  resolve_timeout: 5m
+  slack_api_url_file: /etc/alertmanager/secrets/slack/webhook_url
+
+route:
+  receiver: slack-default
+  group_by: ["namespace", "alertname"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers: ["severity=critical"]
+      receiver: slack-critical
+      continue: true
+    - matchers: ["severity=critical"]
+      receiver: pagerduty
+    - matchers: ["alertname=Watchdog"]
+      receiver: "null"
+
+receivers:
+  - name: "null"
+
+  - name: slack-default
+    slack_configs:
+      - channel: "#observability-alerts"
+        send_resolved: true
+        title: '{{ .CommonLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+
+  - name: slack-critical
+    slack_configs:
+      - channel: "#observability-critical"
+        send_resolved: true
+        title: '🔥 {{ .CommonLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+
+  - name: pagerduty
+    pagerduty_configs:
+      - service_key_file: /etc/alertmanager/secrets/pagerduty/service_key
+        description: '{{ .CommonLabels.alertname }}: {{ .CommonAnnotations.summary }}'
+
+inhibit_rules:
+  - source_matchers: ["severity=critical"]
+    target_matchers: ["severity=warning"]
+    equal: ["namespace", "alertname"]

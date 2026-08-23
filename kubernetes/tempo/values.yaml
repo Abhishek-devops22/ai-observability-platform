@@ -1,0 +1,43 @@
+# Helm values for grafana/tempo-distributed (or grafana/tempo for a
+# single-binary dev setup — swap the chart name below accordingly).
+#
+# helm repo add grafana https://grafana.github.io/helm-charts
+# helm upgrade --install tempo grafana/tempo -n observability -f values.yaml
+
+tempo:
+  storage:
+    trace:
+      backend: local
+      local:
+        path: /var/tempo/traces
+      wal:
+        path: /var/tempo/wal
+  retention: 336h # 14 days
+
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+  metricsGenerator:
+    enabled: true
+    remoteWriteUrl: http://prometheus-kube-prometheus-prometheus.observability.svc.cluster.local:9090/api/v1/write
+
+persistence:
+  enabled: true
+  storageClassName: gp3
+  size: 20Gi
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+serviceMonitor:
+  enabled: true

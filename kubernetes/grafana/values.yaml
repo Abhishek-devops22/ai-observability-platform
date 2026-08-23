@@ -1,0 +1,81 @@
+# Helm values for grafana/grafana.
+#
+# helm repo add grafana https://grafana.github.io/helm-charts
+# helm upgrade --install grafana grafana/grafana -n observability -f values.yaml \
+#   --set-file dashboards.default.executive.json=../../dashboards/executive-dashboard.json \
+#   --set-file dashboards.default.sre.json=../../dashboards/sre-dashboard.json \
+#   --set-file dashboards.default.ai.json=../../dashboards/ai-dashboard.json
+
+adminUser: admin
+# adminPassword intentionally omitted — set via `admin.existingSecret` in
+# production, or --set adminPassword=... at install time for local dev.
+
+persistence:
+  enabled: true
+  storageClassName: gp3
+  size: 10Gi
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus-kube-prometheus-prometheus.observability.svc.cluster.local:9090
+        isDefault: true
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki-gateway.observability.svc.cluster.local
+        jsonData:
+          derivedFields:
+            - datasourceUid: tempo
+              matcherRegex: 'trace_id=(\w+)'
+              name: TraceID
+              url: '$${__value.raw}'
+      - name: Tempo
+        type: tempo
+        access: proxy
+        url: http://tempo.observability.svc.cluster.local:3100
+        uid: tempo
+      - name: Alertmanager
+        type: alertmanager
+        access: proxy
+        url: http://prometheus-kube-prometheus-alertmanager.observability.svc.cluster.local:9093
+        jsonData:
+          implementation: prometheus
+
+dashboardProviders:
+  dashboardproviders.yaml:
+    apiVersion: 1
+    providers:
+      - name: default
+        orgId: 1
+        folder: "AI Observability"
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/default
+
+# Populated via --set-file at install time (see header) or a sidecar that
+# watches ConfigMaps labeled grafana_dashboard=1.
+dashboards:
+  default: {}
+
+sidecar:
+  dashboards:
+    enabled: true
+    label: grafana_dashboard
+    folder: /var/lib/grafana/dashboards/default
+  datasources:
+    enabled: false
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

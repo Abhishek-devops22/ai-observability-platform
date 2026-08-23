@@ -1,0 +1,93 @@
+# Helm values for open-telemetry/opentelemetry-collector, mode=deployment
+# for the gateway + a daemonset for per-node log/host collection.
+#
+# helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+# helm upgrade --install otel-collector open-telemetry/opentelemetry-collector \
+#   -n observability -f values.yaml
+
+mode: daemonset
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+
+presets:
+  logsCollection:
+    enabled: true
+    includeCollectorLogs: false
+  kubernetesAttributes:
+    enabled: true
+  kubeletMetrics:
+    enabled: true
+
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+    filelog:
+      include:
+        - /var/log/pods/*/*/*.log
+      exclude:
+        - /var/log/pods/observability_otel-collector*/**
+      start_at: end
+      include_file_path: true
+      include_file_name: false
+      operators:
+        - type: container
+
+  processors:
+    batch:
+      send_batch_size: 8192
+      timeout: 5s
+    memory_limiter:
+      check_interval: 5s
+      limit_percentage: 80
+      spike_limit_percentage: 25
+    resourcedetection:
+      detectors: [env, eks]
+      timeout: 5s
+    k8sattributes:
+      auth_type: serviceAccount
+      passthrough: false
+      extract:
+        metadata:
+          - k8s.namespace.name
+          - k8s.pod.name
+          - k8s.deployment.name
+          - k8s.node.name
+
+  exporters:
+    otlphttp/loki:
+      endpoint: http://loki-gateway.observability.svc.cluster.local/otlp
+    prometheusremotewrite:
+      endpoint: http://prometheus-kube-prometheus-prometheus.observability.svc.cluster.local:9090/api/v1/write
+    otlp/tempo:
+      endpoint: tempo.observability.svc.cluster.local:4317
+      tls:
+        insecure: true
+
+  service:
+    pipelines:
+      logs:
+        receivers: [otlp, filelog]
+        processors: [memory_limiter, k8sattributes, resourcedetection, batch]
+        exporters: [otlphttp/loki]
+      metrics:
+        receivers: [otlp]
+        processors: [memory_limiter, k8sattributes, resourcedetection, batch]
+        exporters: [prometheusremotewrite]
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, k8sattributes, resourcedetection, batch]
+        exporters: [otlp/tempo]
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 200Mi
+  limits:
+    cpu: 500m
+    memory: 500Mi

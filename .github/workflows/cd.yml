@@ -1,0 +1,89 @@
+name: CD
+
+# Mirrors the root README's CI/CD pipeline:
+#   Git Push -> GitHub Actions -> Unit Tests -> Docker Build ->
+#   Security Scan -> Push Image -> Helm Deploy -> Kubernetes
+#
+# Requires repo secrets: AWS_ROLE_ARN (OIDC), ECR_REGISTRY. Runs only on
+# pushes to main, and only after CI has passed on that commit.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  id-token: write # for AWS OIDC
+  contents: read
+
+jobs:
+  build-scan-push:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: build mcp-server image
+        uses: docker/build-push-action@v6
+        with:
+          context: mcp-server
+          push: false
+          load: true
+          tags: mcp-server:${{ github.sha }}
+
+      - name: security scan (Trivy)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: mcp-server:${{ github.sha }}
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+
+      - name: tag + push
+        id: image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          IMAGE="$REGISTRY/ai-observability-mcp-server:${{ github.sha }}"
+          docker tag mcp-server:${{ github.sha }} "$IMAGE"
+          docker push "$IMAGE"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+  helm-deploy:
+    needs: build-scan-push
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: configure kubectl
+        run: aws eks update-kubeconfig --region us-east-1 --name ai-observability-dev
+
+      - uses: azure/setup-helm@v4
+
+      # TODO: kubernetes/mcp-server-chart/ doesn't exist yet (tracked in
+      # mcp-server/README.md's "Running in-cluster" section) — this step
+      # is a placeholder for once that chart is added.
+      - name: deploy mcp-server
+        run: |
+          helm upgrade --install mcp-server ./kubernetes/mcp-server-chart \
+            -n mcp-server --create-namespace \
+            --set image.repository=${{ needs.build-scan-push.outputs.image }} \
+            --set image.tag=${{ github.sha }}

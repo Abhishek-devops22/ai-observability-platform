@@ -1,0 +1,16 @@
+# Copy to terraform.tfvars and adjust. terraform.tfvars is gitignored.
+
+aws_region  = "us-east-1"
+project     = "ai-observability"
+environment = "dev"
+
+vpc_cidr   = "10.0.0.0/16"
+az_count   = 3
+nat_per_az = false # true = HA (one NAT/AZ), false = single shared NAT (cheaper)
+
+kubernetes_version   = "1.31"
+node_instance_types  = ["t3.large"]
+capacity_type        = "ON_DEMAND" # or "SPOT" for cheaper, preemptible nodes
+desired_size         = 3
+min_size             = 2
+max_size             = 6
