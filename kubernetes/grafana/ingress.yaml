@@ -1,0 +1,47 @@
+# Requires the AWS Load Balancer Controller (kubernetes/README.md's
+# "AWS Load Balancer Controller" step) — it watches Ingress objects with
+# ingressClassName: alb and provisions/manages the ALB itself.
+#
+# scheme: internal on purpose — the ALB only gets a private IP, reachable
+# from inside the VPC (a peered network, VPN, or a bastion), not the
+# public internet. Grafana has its own login, but defaulting to public
+# exposure isn't this repo's call to make for you. To go internet-facing:
+# change scheme to internet-facing below, and seriously consider adding
+# HTTPS (alb.ingress.kubernetes.io/certificate-arn from an ACM cert +
+# alb.ingress.kubernetes.io/ssl-redirect) — not set up here since it
+# needs a domain + ACM cert this repo doesn't provision.
+#
+# No `host` rule is set, so this gets its own ALB (find its DNS name with
+# `kubectl get ingress grafana -n observability`) rather than sharing one
+# with mcp-server's Ingress via group.name — simpler for a first pass, at
+# the cost of a second ALB (~$16/mo). Add matching
+# alb.ingress.kubernetes.io/group.name on both Ingresses + real hostnames
+# to consolidate onto one ALB later.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: ai-observability-platform
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internal
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    alb.ingress.kubernetes.io/backend-protocol: HTTP
+    # Verified: the grafana/grafana chart's Service is named "grafana",
+    # port 80 (`helm template grafana grafana/grafana -f kubernetes/grafana/values.yaml`).
+    alb.ingress.kubernetes.io/healthcheck-path: /api/health
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: 80

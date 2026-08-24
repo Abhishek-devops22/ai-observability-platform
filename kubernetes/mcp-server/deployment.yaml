@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-server
+  namespace: mcp-server
+  labels:
+    app.kubernetes.io/name: mcp-server
+    app.kubernetes.io/part-of: ai-observability-platform
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mcp-server
+    spec:
+      serviceAccountName: mcp-server
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: mcp-server
+          # Built from mcp-server/Dockerfile — see mcp-server/README.md
+          # "Running in-cluster" for the build/push commands.
+          image: "<registry>/ai-observability-mcp-server:latest"
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: mcp-server-config
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          # The MCP server has no dedicated /health endpoint. GET /mcp/
+          # (trailing slash) 307-redirects to /mcp rather than serving a
+          # session, which is enough to prove the process is up — verified
+          # locally: `curl -i http://localhost:8080/mcp/` -> 307. Kubernetes
+          # treats any code < 400 as a successful probe. Plain `/mcp`
+          # returns 400 (it expects a real MCP session) and would flap the
+          # probe, so don't point these at it.
+          readinessProbe:
+            httpGet:
+              path: /mcp/
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /mcp/
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

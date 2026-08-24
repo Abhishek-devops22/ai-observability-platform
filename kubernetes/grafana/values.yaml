@@ -37,7 +37,10 @@ datasources:
       - name: Tempo
         type: tempo
         access: proxy
-        url: http://tempo.observability.svc.cluster.local:3100
+        # Port 3200, not 3100 (that's Loki's) — verified via
+        # `helm template tempo grafana/tempo -n observability -f tempo/values.yaml`:
+        # Service/tempo's http_listen_port (serves both the query API and /metrics).
+        url: http://tempo.observability.svc.cluster.local:3200
         uid: tempo
       - name: Alertmanager
         type: alertmanager

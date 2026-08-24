@@ -26,6 +26,7 @@ env/
 .env
 .env.*
 !.env.example
+!.env.aws.example
 *.pem
 *.key
 kubeconfig*
@@ -39,6 +40,10 @@ ai-engine/**/*.pt
 ai-engine/**/*.pkl
 ai-engine/**/chroma_db/
 .ipynb_checkpoints/
+
+# Local dev runtime artifacts (scripts/run-local.sh)
+mcp-server/.mcp-server.pid
+mcp-server/.mcp-server.log
 
 # OS / editor
 .DS_Store

@@ -1,0 +1,53 @@
+# In-cluster equivalent of mcp-server/.env for local dev. pydantic-settings
+# (mcp-server/config.py) reads real environment variables the same way it
+# reads a .env file, so nothing in the app changes between local and AWS —
+# only where these values point.
+#
+# The URLs below are the real Service names + ports the exact charts and
+# values files in kubernetes/README.md produce, released as
+# "prometheus"/"loki"/"tempo" into the "observability" namespace — verified
+# by rendering each chart with `helm template` against this repo's
+# kubernetes/{prometheus,loki,tempo}/values.yaml (no live cluster needed
+# for that: Service names come from the chart templates, not the cluster).
+# Re-verify if you bump a chart version or change the release name:
+#
+#   helm template prometheus prometheus-community/kube-prometheus-stack -n observability -f kubernetes/prometheus/values.yaml | grep -A2 "^kind: Service"
+#   kubectl get svc -n observability   # once actually deployed
+#
+# PROMETHEUS_URL -> Service/prometheus-kube-prometheus-prometheus, port 9090 (http-web)
+# LOKI_URL       -> Service/loki-gateway, port 80 — fronts the write/read paths
+# TEMPO_URL      -> Service/tempo, port 3200 (server.http_listen_port — same port serves the query API and /metrics)
+#
+# kubernetes/loki/values.yaml backs Loki with a bundled MinIO (required —
+# SimpleScalable mode needs an object storage backend). Its root
+# credentials are supplied via --set at install time, not committed — see
+# that file's header comment and kubernetes/README.md's "Logs" step.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcp-server-config
+  namespace: mcp-server
+  labels:
+    app.kubernetes.io/name: mcp-server
+    app.kubernetes.io/part-of: ai-observability-platform
+data:
+  PROMETHEUS_URL: "http://prometheus-kube-prometheus-prometheus.observability.svc.cluster.local:9090"
+  LOKI_URL: "http://loki-gateway.observability.svc.cluster.local"
+  TEMPO_URL: "http://tempo.observability.svc.cluster.local:3200"
+
+  # Leave empty: _load_kube_config_once() (tools/_clients.py) falls back
+  # to load_incluster_config() automatically when this is unset, using
+  # the ServiceAccount token Kubernetes mounts into the pod.
+  KUBECONFIG_PATH: ""
+
+  DEFAULT_NAMESPACE: "default"
+
+  # Keep false unless you've also applied rbac-mutate.yaml — see the
+  # comment there.
+  ALLOW_MUTATIONS: "false"
+
+  REQUEST_TIMEOUT_SECONDS: "15"
+
+  TRANSPORT: "streamable-http"
+  HTTP_HOST: "0.0.0.0"
+  HTTP_PORT: "8080"

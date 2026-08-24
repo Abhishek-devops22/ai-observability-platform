@@ -1,0 +1,39 @@
+# OPT-IN — do not apply this unless you also set ALLOW_MUTATIONS=true in
+# configmap.yaml. Grants restart_deployment and scale_deployment
+# (mcp-server/tools/remediation.py) the ability to patch Deployments.
+# The app-level ALLOW_MUTATIONS flag and this RBAC binding are two
+# independent gates on purpose (defense in depth) — both must be on for
+# the mutating tools to work.
+#
+# In production, don't bind this to the MCP server's own ServiceAccount
+# at all: route mutations through the Slack-approval / Argo Workflow
+# flow described in the root README instead (the ServiceAccount that
+# actually calls kubectl/apps-v1 should be Argo's, not the LLM-facing
+# MCP server's).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mcp-server-mutate
+  labels:
+    app.kubernetes.io/name: mcp-server
+    app.kubernetes.io/part-of: ai-observability-platform
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mcp-server-mutate
+  labels:
+    app.kubernetes.io/name: mcp-server
+    app.kubernetes.io/part-of: ai-observability-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mcp-server-mutate
+subjects:
+  - kind: ServiceAccount
+    name: mcp-server
+    namespace: mcp-server

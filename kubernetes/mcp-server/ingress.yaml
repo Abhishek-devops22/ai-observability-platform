@@ -1,0 +1,56 @@
+# Requires the AWS Load Balancer Controller — see grafana/ingress.yaml's
+# header comment for the shared setup notes (internal scheme, no shared
+# ALB group, how to change either).
+#
+# ⚠️  SECURITY: the MCP server itself has no authentication (see
+# mcp-server/README.md's tool table) — anything that can reach this
+# Ingress can call get_logs/get_metrics/get_traces/get_events/
+# describe_pod/list_failed_pods with zero credentials, no Kubernetes RBAC
+# involved at all. That's a materially weaker boundary than
+# `kubectl port-forward` (which requires valid EKS IAM/RBAC access to
+# open). scheme: internal (VPC-only) is the floor, not a fix — anyone
+# already inside the VPC/VPN gets unauthenticated access. Mitigations to
+# actually consider before relying on this in anything but a demo/dev
+# account:
+#   - Restrict reachability with alb.ingress.kubernetes.io/security-groups
+#     scoped to a specific CIDR (e.g. just your VPN range), or put this
+#     behind an authenticating proxy / ALB OIDC auth
+#     (alb.ingress.kubernetes.io/auth-type: oidc) in front of it.
+#   - Leave ALLOW_MUTATIONS=false (kubernetes/mcp-server/configmap.yaml
+#     default) unless you've also applied rbac-mutate.yaml — this at
+#     least keeps restart_deployment/scale_deployment unreachable even if
+#     someone does reach the Ingress.
+#   - Prefer `kubectl port-forward` over this Ingress entirely unless you
+#     specifically need non-kubectl clients to reach it.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mcp-server
+  namespace: mcp-server
+  labels:
+    app.kubernetes.io/name: mcp-server
+    app.kubernetes.io/part-of: ai-observability-platform
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internal
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    alb.ingress.kubernetes.io/backend-protocol: HTTP
+    # /mcp/ (trailing slash) 307-redirects rather than serving a session —
+    # the only path this server answers successfully on. ALB's default
+    # healthy matcher is "200" only, so it must be widened to 307 or the
+    # target would show unhealthy forever. Same reasoning as the
+    # Deployment's readiness/liveness probes — see deployment.yaml.
+    alb.ingress.kubernetes.io/healthcheck-path: /mcp/
+    alb.ingress.kubernetes.io/success-codes: "307"
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: mcp-server
+                port:
+                  number: 8080

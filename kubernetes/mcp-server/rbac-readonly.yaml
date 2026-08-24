@@ -1,0 +1,37 @@
+# Always applied. Covers get_logs (Loki, no K8s API), get_metrics
+# (Prometheus, no K8s API), get_traces (Tempo, no K8s API), get_events,
+# describe_pod, and list_failed_pods — see mcp-server/tools/*.py. None of
+# these mutate cluster state, matching the platform's "read-only MCP
+# access by default" posture (README.md "Security").
+#
+# Cluster-scoped because list_failed_pods / get_events can be called
+# without a namespace filter (mcp-server/tools/kubernetes.py). Narrow to
+# a namespaced Role + RoleBinding per namespace instead if your cluster
+# policy requires it.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mcp-server-read
+  labels:
+    app.kubernetes.io/name: mcp-server
+    app.kubernetes.io/part-of: ai-observability-platform
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "events"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mcp-server-read
+  labels:
+    app.kubernetes.io/name: mcp-server
+    app.kubernetes.io/part-of: ai-observability-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mcp-server-read
+subjects:
+  - kind: ServiceAccount
+    name: mcp-server
+    namespace: mcp-server

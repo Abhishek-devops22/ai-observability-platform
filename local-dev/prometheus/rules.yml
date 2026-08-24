@@ -1,0 +1,10 @@
+groups:
+  - name: ai-observability-platform-local-dev
+    rules:
+      - alert: HighPredictedFailureProbability
+        expr: ai_predicted_failure_probability > 0.5
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} in {{ $labels.namespace }} has elevated predicted failure probability"

@@ -1,7 +1,52 @@
 # Helm values for grafana/loki, deployed in SimpleScalable mode.
 #
 # helm repo add grafana https://grafana.github.io/helm-charts
-# helm upgrade --install loki grafana/loki -n observability -f values.yaml
+#
+# deploymentMode: SimpleScalable requires an object storage backend (the
+# chart's own validate.yaml rejects filesystem storage in this mode) —
+# backed here by the bundled MinIO subchart (minio.enabled below) rather
+# than a real S3 bucket, since this platform doesn't otherwise need an
+# AWS storage dependency for logs. Swap loki.storage.type to a real `s3`
+# bucket for production retention beyond MinIO's PVC size, or if you want
+# log data to survive a full MinIO PVC loss.
+#
+# IMPORTANT — read before installing: with minio.enabled: true, this
+# chart's own templates (_helpers.tpl "loki.commonStorageConfig" /
+# "loki.rulerStorageConfig") hardcode Loki's S3 endpoint + credentials
+# directly from minio.rootUser / minio.rootPassword as plain Helm VALUES
+# — not from a Kubernetes Secret, and not through env-var expansion.
+# minio.existingSecret only covers the MinIO server's own pod credentials;
+# Loki's generated config still needs the same password as a literal
+# value either way. Verified by rendering this file with `helm template`
+# and inspecting the output — there's no supported way around it with
+# this integration path. Practically, that means:
+#
+#   * NEVER commit real values for minio.rootUser/minio.rootPassword —
+#     they aren't set in this file. Supply them at install time instead,
+#     generated fresh (same pattern as alertmanager-config below, which
+#     also keeps real secret material out of git):
+#
+#       helm upgrade --install loki grafana/loki -n observability -f loki/values.yaml \
+#         --set minio.rootUser=loki-minio-admin \
+#         --set minio.rootPassword="$(openssl rand -base64 24)"
+#
+#     If you skip the --set flags, the chart falls back to its own
+#     built-in default password (a well-known, publicly documented
+#     string) — fine for a scratch/local cluster, not for anything else.
+#
+#   * loki.configStorageType is set to Secret (not the chart's default
+#     ConfigMap) below, so the rendered config — which embeds that
+#     password — lands in a Secret rather than a plaintext ConfigMap.
+#     It's still readable by anyone with get/list on Secrets in this
+#     namespace; that's the ceiling of what minio.enabled's built-in
+#     integration supports. For real secret-at-rest hygiene, move to a
+#     real S3 bucket + IAM role instead of MinIO.
+#
+# Verified renderable with:
+#   helm template loki grafana/loki -n observability -f loki/values.yaml
+# (grafana/loki chart — re-verify against a newer major version before
+# reusing this, since this hardcoded-credential behavior is chart-version
+# specific and could change.)
 
 deploymentMode: SimpleScalable
 
@@ -9,13 +54,23 @@ loki:
   auth_enabled: false
   commonConfig:
     replication_factor: 2
+  # See the file header — the s3 endpoint/bucket/credentials below are
+  # NOT read from here when minio.enabled: true (the chart derives them
+  # itself from minio.rootUser/rootPassword/buckets instead). Kept only
+  # because loki.storage.type/bucketNames still drive schemaConfig and a
+  # couple of enterprise-only code paths this chart has.
   storage:
-    type: filesystem
+    type: s3
+    bucketNames:
+      chunks: chunks
+      ruler: ruler
+      admin: admin
+  configStorageType: Secret
   schemaConfig:
     configs:
       - from: "2024-01-01"
         store: tsdb
-        object_store: filesystem
+        object_store: s3
         schema: v13
         index:
           prefix: loki_index_
@@ -47,7 +102,16 @@ gateway:
   enabled: true
 
 minio:
-  enabled: false # swap to true / an S3 bucket for production retention beyond a few days
+  enabled: true
+  # rootUser / rootPassword are intentionally NOT set here — see the file
+  # header. Pass them via --set at install time.
+  #
+  # The chart's separate `users:` (a second, distinct account) isn't
+  # needed — Loki authenticates as the MinIO root user, so there's one
+  # credential to manage, not two.
+  users: []
+  # buckets: left at the chart default (chunks/ruler/admin), which
+  # already matches loki.storage.bucketNames above.
 
 test:
   enabled: false
