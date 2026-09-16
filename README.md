@@ -5,10 +5,12 @@
 > Kubernetes, OpenTelemetry, MCP Server, Grafana, Prometheus, Loki,
 > Tempo, and Machine Learning.
 
+
 ## Project Vision
 
 This platform enables DevOps and SRE teams to move from **reactive
 monitoring** to **predictive operations**.
+
 
 **Core capabilities**
 
@@ -47,7 +49,9 @@ monitoring** to **predictive operations**.
               Slack • Alertmanager • Argo
 ```
 
+
 ------------------------------------------------------------------------
+
 
 # Repository Structure
 
