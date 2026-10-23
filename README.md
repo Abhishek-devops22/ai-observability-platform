@@ -36,7 +36,7 @@ monitoring** to **predictive operations**.
      Prometheus          Loki             Tempo
     (Metrics)          (Logs)          (Traces)
         │                  │                  │
-        └────────── OpenTelemetry Collector ─┘
+        └────────── OpenTelemetry Collector  ─┘
                            │
         Kubernetes Cluster (Pods, Nodes, Events)
                            │
